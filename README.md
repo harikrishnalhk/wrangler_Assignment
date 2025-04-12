@@ -1,48 +1,4 @@
 
-Added byte size and time duration parsers with aggregate-stats directive
-
-- Implemented BYTE_SIZE and TIME_DURATION lexer/parser rules
-- Created ByteSize and TimeDuration token classes
-- Added AggregateStatsDirective for calculating aggregates
-- Included comprehensive test cases
-- Updated documentation
-
-## Byte Size and Time Duration Parsers
-
-Wrangler now supports parsing byte sizes and time durations with units:
-
-### Byte Sizes
-Supported units: 
-- B (bytes)
-- KB (kilobytes, 1000 bytes)
-- MB (megabytes, 1000^2 bytes)
-- GB (gigabytes, 1000^3 bytes)
-- TB (terabytes, 1000^4 bytes)
-- PB (petabytes, 1000^5 bytes)
-- KIB (kibibytes, 1024 bytes)
-- MIB (mebibytes, 1024^2 bytes)
-- GIB (gibibytes, 1024^3 bytes)
-- TIB (tebibytes, 1024^4 bytes)
-- PIB (pebibytes, 1024^5 bytes)
-
-Examples: "10KB", "1.5MB", "2GIB"
-
-### Time Durations
-Supported units:
-- NS (nanoseconds)
-- US (microseconds)
-- MS (milliseconds)
-- S (seconds)
-- M (minutes)
-- H (hours)
-- D (days)
-
-Examples: "500ms", "1.5s", "2h"
-
-### Aggregate Stats Directive
-The new `aggregate-stats` directive calculates aggregates for byte size and time duration columns:
-
-# Data Prep
 
 ![cm-available](https://cdap-users.herokuapp.com/assets/cm-available.svg)
 ![cdap-transform](https://cdap-users.herokuapp.com/assets/cdap-transform.svg)
