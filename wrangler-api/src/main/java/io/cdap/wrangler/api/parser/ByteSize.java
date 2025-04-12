@@ -8,6 +8,9 @@ public class ByteSize implements Token {
     private final String original;
 
     public ByteSize(String value) {
+
+            if (value == null || !value.matches("^\\d+(\\.\\d+)?[A-Za-z]+$")) {
+        throw new IllegalArgumentException("Invalid byte size format: " + value);
         this.original = value;
         String numStr = value.replaceAll("[^0-9.]", "");
         String unit = value.replaceAll("[0-9.]", "").toUpperCase();
