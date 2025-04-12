@@ -1,155 +1,76 @@
-package io.cdap.wrangler.api.directive;
+package io.cdap.wrangler.directive;
 
-import io.cdap.wrangler.api.Arguments;
-import io.cdap.wrangler.api.Directive;
-import io.cdap.wrangler.api.DirectiveExecutionException;
-import io.cdap.wrangler.api.DirectiveParseException;
-import io.cdap.wrangler.api.ExecutorContext;
-import io.cdap.wrangler.api.Optional;
 import io.cdap.wrangler.api.Row;
 import io.cdap.wrangler.api.parser.ColumnName;
 import io.cdap.wrangler.api.parser.Text;
-import io.cdap.wrangler.api.parser.TokenType;
-import io.cdap.wrangler.api.parser.UsageDefinition;
-import io.cdap.wrangler.api.parser.ByteSize;
-import io.cdap.wrangler.api.parser.TimeDuration;
+import io.cdap.wrangler.executor.RecipePipeline;
+import io.cdap.wrangler.executor.RecipePipelineExecutor;
+import io.cdap.wrangler.parser.GrammarBasedParser;
+import io.cdap.wrangler.parser.RecipeParser;
+import io.cdap.wrangler.parser.TextDirectives;
+import org.junit.Test;
 
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
-/**
- * Directive for aggregating byte size and time duration statistics.
- * Example usage:
- * aggregate-stats :data_size :response_time total_size_mb total_time_sec MB S
- */
-public class AggregateStatsDirective implements Directive {
-    public static final String DIRECTIVE_NAME = "aggregate-stats";
+import static org.junit.Assert.assertEquals;
+
+public class AggregateStatsDirectiveTest {
     
-    private String sizeColumn;
-    private String timeColumn;
-    private String sizeOutputColumn;
-    private String timeOutputColumn;
-    private String sizeOutputUnit = "MB";
-    private String timeOutputUnit = "S";
-    private String aggregationType = "total";
-    
-    // Aggregation stores
-    private long totalBytes = 0;
-    private long totalNanos = 0;
-    private int rowCount = 0;
+    @Test
+    public void testTotalAggregation() throws Exception {
+        // Test data from PDF specification
+        List<Row> rows = Arrays.asList(
+            new Row("data_transfer_size", "1MB").add("response_time", "500ms"),
+            new Row("data_transfer_size", "2MB").add("response_time", "300ms"),
+            new Row("data_transfer_size", "500KB").add("response_time", "200ms")
+        );
 
-    @Override
-    public UsageDefinition define() {
-        return UsageDefinition.builder(DIRECTIVE_NAME)
-            .define("size-column", TokenType.COLUMN_NAME)
-            .define("time-column", TokenType.COLUMN_NAME)
-            .define("size-output", TokenType.COLUMN_NAME)
-            .define("time-output", TokenType.COLUMN_NAME)
-            .define("size-unit", TokenType.TEXT, Optional.TRUE)
-            .define("time-unit", TokenType.TEXT, Optional.TRUE)
-            .define("aggregation", TokenType.TEXT, Optional.TRUE)
-            .build();
+        // Recipe from PDF specification
+        String[] recipe = new String[] {
+            "aggregate-stats :data_transfer_size :response_time total_size_mb total_time_sec"
+        };
+
+        RecipeParser parser = new GrammarBasedParser(new TextDirectives(recipe));
+        RecipePipeline pipeline = new RecipePipelineExecutor();
+        List<Row> results = pipeline.execute(parser, rows);
+
+        // Assertions from PDF specification
+        assertEquals(1, results.size());
+        assertEquals(3.5, results.get(0).getValue("total_size_mb"), 0.001);
+        assertEquals(1.0, results.get(0).getValue("total_time_sec"), 0.001);
     }
 
-    @Override
-    public void initialize(Arguments args) throws DirectiveParseException {
-        this.sizeColumn = ((ColumnName) args.value("size-column")).value();
-        this.timeColumn = ((ColumnName) args.value("time-column")).value();
-        this.sizeOutputColumn = ((ColumnName) args.value("size-output")).value();
-        this.timeOutputColumn = ((ColumnName) args.value("time-output")).value();
-        
-        if (args.contains("size-unit")) {
-            this.sizeOutputUnit = ((Text) args.value("size-unit")).value().toUpperCase();
-        }
-        if (args.contains("time-unit")) {
-            this.timeOutputUnit = ((Text) args.value("time-unit")).value().toUpperCase();
-        }
-        if (args.contains("aggregation")) {
-            this.aggregationType = ((Text) args.value("aggregation")).value().toLowerCase();
-        }
+    @Test
+    public void testAverageAggregation() throws Exception {
+        List<Row> rows = Arrays.asList(
+            new Row("size", "1MB").add("time", "1s"),
+            new Row("size", "2MB").add("time", "2s")
+        );
+
+        String[] recipe = new String[] {
+            "aggregate-stats :size :time avg_size_mb avg_time_sec MB S average"
+        };
+
+        RecipeParser parser = new GrammarBasedParser(new TextDirectives(recipe));
+        RecipePipeline pipeline = new RecipePipelineExecutor();
+        List<Row> results = pipeline.execute(parser, rows);
+
+        assertEquals(1, results.size());
+        assertEquals(1.5, results.get(0).getValue("avg_size_mb"), 0.001);
+        assertEquals(1.5, results.get(0).getValue("avg_time_sec"), 0.001);
     }
 
-    @Override
-    public List<Row> execute(List<Row> rows, ExecutorContext context) throws DirectiveExecutionException {
-        for (Row row : rows) {
-            try {
-                Object sizeValue = row.getValue(sizeColumn);
-                if (sizeValue != null) {
-                    ByteSize size = new ByteSize(sizeValue.toString());
-                    totalBytes += size.getBytes();
-                }
-                
-                Object timeValue = row.getValue(timeColumn);
-                if (timeValue != null) {
-                    TimeDuration time = new TimeDuration(timeValue.toString());
-                    totalNanos += time.getNanoseconds();
-                }
-                
-                rowCount++;
-            } catch (Exception e) {
-                throw new DirectiveExecutionException(
-                    String.format("Error processing row %d: %s", rowCount + 1, e.getMessage()), e);
-            }
-        }
-        return rows;
-    }
+    @Test(expected = DirectiveExecutionException.class)
+    public void testInvalidData() throws Exception {
+        List<Row> rows = Arrays.asList(
+            new Row("size", "invalid").add("time", "1s")
+        );
 
-    @Override
-    public List<Row> finalize(List<Row> rows, ExecutorContext context) throws DirectiveExecutionException {
-        Row result = new Row();
-        
-        // Calculate size aggregate
-        double sizeResult = convertBytes(totalBytes, sizeOutputUnit);
-        if ("average".equals(aggregationType) && rowCount > 0) {
-            sizeResult = sizeResult / rowCount;
-        }
-        result.add(sizeOutputColumn, sizeResult);
-        
-        // Calculate time aggregate
-        double timeResult = convertNanos(totalNanos, timeOutputUnit);
-        if ("average".equals(aggregationType) && rowCount > 0) {
-            timeResult = timeResult / rowCount;
-        }
-        result.add(timeOutputColumn, timeResult);
-        
-        return Collections.singletonList(result);
-    }
+        String[] recipe = new String[] {
+            "aggregate-stats :size :time out_size out_time"
+        };
 
-    private double convertBytes(long bytes, String unit) {
-        switch (unit.toUpperCase()) {
-            case "KB": return bytes / 1000.0;
-            case "MB": return bytes / (1000.0 * 1000);
-            case "GB": return bytes / (1000.0 * 1000 * 1000);
-            case "TB": return bytes / (1000.0 * 1000 * 1000 * 1000);
-            case "PB": return bytes / (1000.0 * 1000 * 1000 * 1000 * 1000);
-            case "KIB": return bytes / 1024.0;
-            case "MIB": return bytes / (1024.0 * 1024);
-            case "GIB": return bytes / (1024.0 * 1024 * 1024);
-            case "TIB": return bytes / (1024.0 * 1024 * 1024 * 1024);
-            case "PIB": return bytes / (1024.0 * 1024 * 1024 * 1024 * 1024);
-            case "B":
-            default: return bytes;
-        }
-    }
-
-    private double convertNanos(long nanos, String unit) {
-        switch (unit.toUpperCase()) {
-            case "NS": return nanos;
-            case "US": return nanos / 1000.0;
-            case "MS": return nanos / (1000.0 * 1000);
-            case "S": return nanos / (1000.0 * 1000 * 1000);
-            case "M": return nanos / (1000.0 * 1000 * 1000 * 60);
-            case "H": return nanos / (1000.0 * 1000 * 1000 * 60 * 60);
-            case "D": return nanos / (1000.0 * 1000 * 1000 * 60 * 60 * 24);
-            default: return nanos / (1000.0 * 1000 * 1000); // default to seconds
-        }
-    }
-
-    @Override
-    public void destroy() {
-        // Reset aggregation state
-        totalBytes = 0;
-        totalNanos = 0;
-        rowCount = 0;
+        RecipePipelineExecutor.execute(recipe, rows);
     }
 }
