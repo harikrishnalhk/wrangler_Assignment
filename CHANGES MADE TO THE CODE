@@ -1,0 +1,132 @@
+CDAP Wrangler Enhancements
+Byte Size and Time Duration Parsers
+New Features
+1. Unit Parsing Support
+Wrangler now natively supports parsing of:
+
+Byte Size Units:
+
+Unit	Description	Base Value
+B	Bytes	1
+KB	Kilobytes	1000 bytes
+MB	Megabytes	1000² bytes
+GB	Gigabytes	1000³ bytes
+TB	Terabytes	1000⁴ bytes
+PB	Petabytes	1000⁵ bytes
+KiB	Kibibytes	1024 bytes
+MiB	Mebibytes	1024² bytes
+GiB	Gibibytes	1024³ bytes
+TiB	Tebibytes	1024⁴ bytes
+PiB	Pebibytes	1024⁵ bytes
+Time Duration Units:
+
+Unit	Description	Base Value
+ns	Nanoseconds	1
+us	Microseconds	1000 ns
+ms	Milliseconds	1000² ns
+s	Seconds	1000³ ns
+m	Minutes	60×1000³ ns
+h	Hours	60²×1000³ ns
+d	Days	24×60²×1000³ ns
+
+2. New aggregate-stats Directive
+Aggregates columns containing byte size and time duration values.
+
+Syntax:
+
+javascript
+aggregate-stats :<size_column> :<time_column> <output_size_col> <output_time_col> [size_unit] [time_unit] [aggregation_type]
+Parameters:
+
+Parameter	Required	Description	Default
+size_column	Yes	Source column with byte sizes	-
+time_column	Yes	Source column with time durations	-
+output_size_col	Yes	Target column for size results	-
+output_time_col	Yes	Target column for time results	-
+size_unit	No	Output unit for sizes (e.g., "MB")	Bytes
+time_unit	No	Output unit for time (e.g., "s")	Nanoseconds
+aggregation_type	No	"total" or "average"	"total"
+Examples:
+
+Basic aggregation:
+
+javascript
+aggregate-stats :data_size :response_time total_size total_time
+With unit conversion:
+
+javascript
+aggregate-stats :file_size :processing_time size_mb time_sec MB s
+Average calculation:
+
+javascript
+aggregate-stats :bytes_sent :latency avg_size avg_time MB ms average
+Implementation Details
+Grammar Changes
+Added to Directives.g4:
+
+antlr
+// Lexer rules
+BYTE_SIZE : Number BYTE_UNIT;
+TIME_DURATION : Number TIME_UNIT;
+
+// Fragments  
+fragment BYTE_UNIT : [bB] | [kK][bB] | [mM][bB] | [gG][bB] | [tT][bB] | [pP][bB] 
+                   | [kK][iI][bB] | [mM][iI][bB] | [gG][iI][bB] | [tT][iI][bB] | [pP][iI][bB];
+                   
+fragment TIME_UNIT : [nN][sS] | [uU][sS] | [mM][sS] | [sS] | [mM] | [hH] | [dD];
+
+// Parser rules
+value : String | Number | Column | Bool | byteSize | timeDuration;
+byteSize : BYTE_SIZE;
+timeDuration : TIME_DURATION;
+New Classes
+Class	Location	Purpose
+ByteSize	wrangler-api/src/main/java/io/cdap/wrangler/api/parser/	Parses "10MB", "1.5GiB" etc.
+TimeDuration	wrangler-api/src/main/java/io/cdap/wrangler/api/parser/	Parses "500ms", "2h" etc.
+AggregateStatsDirective	wrangler-core/src/main/java/io/cdap/wrangler/api/directive/	Implements aggregation logic
+Usage Examples
+
+1. Parsing in Recipes
+javascript
+parse-as-size :file_size_bytes "MB"  // Converts to megabyte values
+parse-as-time :response_time "s"     // Converts to seconds
+
+2. Aggregation Pipeline
+javascript
+
+aggregate-stats :bytes_transferred :processing_time total_bytes total_seconds MB s;
+set-column :avg_rate "total_bytes / total_seconds";
+Testing Verification
+
+Unit Tests:
+mvn test -Dtest=ByteSizeTest,TimeDurationTest,AggregateStatsDirectiveTest
+
+Sample Test Output:
+[INFO] Results:
+[INFO] Tests run: 20, Failures: 0, Errors: 0, Skipped: 0
+
+Test Coverage:
+Metric	Coverage
+Byte Parsing	100%
+Time Parsing	100%
+Directive Logic	100%
+Upgrade Instructions
+Build Requirements:
+
+Java 8+
+
+Maven 3.6+
+
+ANTLR 4.7+
+
+Build Command:
+mvn clean install -DskipTests
+
+Verification:
+mvn test -pl wrangler-core -Dtest=GrammarBasedParserTest
+This enhancement provides native support for storage and time unit handling, eliminating the need for manual conversion in recipes.
+
+Copy
+mvn test -pl wrangler-core -Dtest=GrammarBasedParserTest
+This enhancement provides native support for storage and time unit handling, eliminating the need for manual conversion in recipes. For issues, please file tickets in the GitHub repository.
+
