@@ -1,3 +1,12 @@
+
+Added byte size and time duration parsers with aggregate-stats directive
+
+- Implemented BYTE_SIZE and TIME_DURATION lexer/parser rules
+- Created ByteSize and TimeDuration token classes
+- Added AggregateStatsDirective for calculating aggregates
+- Included comprehensive test cases
+- Updated documentation
+
 # Data Prep
 
 ![cm-available](https://cdap-users.herokuapp.com/assets/cm-available.svg)
